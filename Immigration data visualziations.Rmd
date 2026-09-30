@@ -2486,8 +2486,8 @@ data <- data %>%
     )
   )
 
-# Step 2: Check your data before filtering
-# DIAGNOSTIC: Uncomment these lines to check your data
+# Step 2: Check  data before filtering
+
 # table(data$votingintention_headline, useNA = "always")
 # table(data$immig_3cat, useNA = "always")
 # table(data$votingintention_headline, data$immig_3cat, useNA = "always")
@@ -2520,7 +2520,7 @@ plot_data <- data %>%
     percent_plot = if_else(immig_3cat == "Reduce", -percent, percent)
   )
 
-# Step 5: DIAGNOSTIC - Check your processed data
+# Step 5: DIAGNOSTIC - 
 print("Summary of plot_data:")
 print(plot_data)
 print("\nParty response counts:")
@@ -2559,7 +2559,7 @@ p <- ggplot(plot_data, aes(x = reorder(votingintention_headline, percent_plot),
 # Display the plot
 print(p)
 
-# Step 7: Additional diagnostics - run these to troubleshoot
+# Step 7: Additional diagnostics -
 cat("\n=== DIAGNOSTIC INFORMATION ===\n")
 cat("Unique parties in original data:\n")
 print(unique(data$votingintention_headline))
