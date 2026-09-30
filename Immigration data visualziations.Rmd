@@ -2413,7 +2413,7 @@ plot_data <- data %>%
     percent_plot = if_else(immig_3cat == "Reduce Numbers", -percent, percent)
   )
 
-# Step 5: DIAGNOSTIC - Check your processed data
+# Step 5: DIAGNOSTIC - Check  processed data
 print("Summary of plot_data:")
 print(plot_data)
 print("\nParty response counts:")
