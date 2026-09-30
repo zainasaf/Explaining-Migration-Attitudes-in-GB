@@ -1202,7 +1202,7 @@ print(stacked_bar_plot)
 
 ```{r}
 
-# 1. DATA PREPARATION -----------------------------------------------------
+# 1. DATA PREPARATION #
 # Transform the wide format biggestissue columns to long format
 issue_data <- data %>%
   # Select segment and all biggestissue columns
@@ -1281,7 +1281,7 @@ top3_by_segment <- segment_issue_props %>%
   ) %>%
   ungroup()
 
-# 4. HORIZONTAL BAR CHART ------------------------------------------------
+# 4. HORIZONTAL BAR CHART #
 top3_bar_chart <- top3_by_segment %>%
   ggplot(aes(x = percentage, y = reorder_within(issue_clean, percentage, segment), fill = factor(rank))) +
   geom_col() +
@@ -1391,7 +1391,7 @@ immigration_position <- data %>%
   # Remove missing values for immigration importance
   filter(!is.na(immigration_important))
 
-# 2. CALCULATE WEIGHTED PERCENTAGES --------------------------------------
+# 2. CALCULATE WEIGHTED PERCENTAGES #
 segment_immigration_summary <- immigration_position %>%
   group_by(segment, immigration_position) %>%
   summarise(
@@ -1417,7 +1417,7 @@ segment_immigration_summary <- immigration_position %>%
                                  levels = c("Decrease", "Keep the Same", "Increase"))
   )
 
-# 3. CREATE BAR CHART -----------------------------------------------------
+# 3. CREATE BAR CHART #
 immigration_bar_chart <- segment_immigration_summary %>%
   ggplot(aes(x = segment, y = percentage_important, fill = immigration_position)) +
   geom_col(position = "dodge", alpha = 0.8, width = 0.7) +
@@ -1461,7 +1461,7 @@ print(immigration_bar_chart)
 
 ## Immigration Position of those who don't consider it an important issue ##
 
-# 1. DATA PREPARATION -----------------------------------------------------
+# 1. DATA PREPARATION #
 # Prepare immigration position data
 immigration_position <- data %>%
   filter(!is.na(segment), !is.na(immigrant_numbers), !is.na(UKNatRepWeight)) %>%
@@ -1647,7 +1647,7 @@ asylum_bar_chart <- segment_asylum_summary %>%
 ylim(0, max(segment_asylum_summary$percentage_important) * 1.1)
 print(asylum_bar_chart)
 
-# 4. SUMMARY TABLE (optional) --------------------------------------------
+# 4. SUMMARY TABLE #
 print("Summary of weighted sample sizes by segment and position:")
 print(segment_asylum_summary %>%
   select(segment, refugee_position, total_weighted, total_unweighted, percentage_important) %>%
@@ -2358,7 +2358,7 @@ library(ggplot2)
 
 data <- read_csv(here("data", "immigration.csv"))
 
-# Step 1: Recode to ALL categories using the EXACT strings from your data
+# Step 1: Recode to ALL categories using the EXACT strings from data
 data <- data %>%
   mutate(
     immig_3cat = case_when(
@@ -2579,7 +2579,7 @@ library(dplyr)
 library(ggplot2)
 library(scales)
 
-# Set your color mapping (adjust the keys to match your data)
+# Set  color mapping ##
 interest_colors <- c(
   "Hardly interested" = "#D53E4F",
   "Not interested at all" = "#fee08b",
