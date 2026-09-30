@@ -12,7 +12,6 @@ library(patchwork)
 
 ## Data Prep
 
-Prepare data - it generates a warning about `NA` being induced by coercion.  This warning is expected and not problematic. 
 
 ```{r echo=FALSE}
 library(tidyverse)
