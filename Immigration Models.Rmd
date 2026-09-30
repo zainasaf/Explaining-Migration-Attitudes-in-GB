@@ -1,0 +1,717 @@
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(rio)
+library(survey)
+library(svrepmisc)
+library(marginaleffects)
+library(patchwork)
+```
+
+## Data Prep
+
+Prepare data - it generates a warning about `NA` being induced by coercion.  This warning is expected and not problematic. 
+
+```{r echo=FALSE}
+library(tidyverse)
+library(rio)
+
+dat <- import("immigration.csv")
+dat <- dat %>% 
+  mutate(gender = factor(gender, levels=c("Male", "Female")), 
+         age_grouped = factor(age_grouped), 
+         region = factor(region, 
+                         levels = c("South West England", 
+                                    "South East England", 
+                                    "Greater London", 
+                                    "East of England", 
+                                    "West Midlands", 
+                                    "Wales", 
+                                    "East Midlands", 
+                                    "Yorkshire and the Humber", 
+                                    "North West England", 
+                                    "North East England", 
+                                    "Scotland")), 
+         ethnicity = factor(ethnicity, levels=c("White (British/Irish/Other)", 
+                                                "Asian/Asian British", 
+                                                "Black/Black British",  
+                                                "Mixed descent (e.g. White & Asian, White & Black)", 
+                                                "Other"), 
+                            labels = c("White", "Asian", "Black", "Mixed", "Other")),
+         education = factor(education, 
+                            levels = c("Incomplete Secondary Education (Below GCSE/O Level)",             
+                                       "Secondary Education Completed (GCSE/O Level/CSE or equivalent)",
+                                       "Secondary Education Completed (A Level or equivalent)",
+                                       "Some Vocational or Technical Qualifications",
+                                       "Vocational or Technical Qualifications Completed (e.g. HND, NVQ)",
+                                       "University Education Completed (First Degree e.g. BA, BSc)",         
+                                       "Postgraduate Education Completed (e.g. Masters)",   
+                                       "Doctorate, Post-doctorate or equivalent (Higher Degree)",                                
+                                       "Prefer not to answer"), 
+                            labels = c("< Secondary", "Secondary < A Level", "Secondary A Level", 
+                                       "Some Tech", "Tech Completed", "BA/Sc", "MA/Sc", "PhD", "No Answer")), 
+         degree = factor(degree, 
+                         levels = c("No degree", "Degree", ""), 
+                         labels = c("No Degree", "Degree", "No Answer")), 
+         urbanrural = factor(urbanrural, levels=c("Rural Area", "Village", "Small Town", "Large Town", "Suburbs", "Urban/City Centre"), 
+                             labels = c("Rural", "Village", "Small Town", "Large Town", "Suburbs", "City")), 
+         religion = factor(religion, levels=c("Christian (including Church of England, Catholic, Protestant and all other Christian denominations)", 
+                                              "Muslim", "Hindu", "Jewish", "Buddhist", "Sikh", "Any other religion, write in", 
+                                              "No religion", "Prefer not to say"), 
+                           labels = c("Christian", "Muslim", "Hindu", "Jewish", "Buddhist", "Sikh", "Other", "None", "No Answer")), 
+         christian = case_when(
+           religion == "Christian" ~ "Christian", 
+           religion %in% c("Muslim", "Hindu", "Jewish", "Buddhist", "Sikh", "Other") ~ "Other", 
+           religion == "None" ~ "None", 
+           religion == "No Answer" ~ "No Answer"
+         ), 
+         christian = factor(christian, levels=c("None", "Christian", "Other", "No Answer")), 
+         workstatus = factor(workstatus, 
+                             levels = c("Not working and not seeking work",
+                                        "Homemaker/Househusband/Housewife etc",
+                                        "Student",
+                                        "Not working/temporarily unemployed/sick but seeking work",
+                                        "Working part time - working less than 30 hours per week",
+                                        "Working full time - working 30 hours per week or more",                              
+                                        "Retired with a private pension",
+                                        "Retired on a state pension only",                                              
+                                        "Prefer not to say"), 
+                             labels = c("Not Working", "Homemaker", "Student", "Unemployed", 
+                                        "Part time", "Full time", "Retired Private Pension", 
+                                        "Retired State Pension", "No Answer")), 
+         work_small = case_when(
+           workstatus %in% c("Not Working", "Homemaker", "Student") ~ "Not Working",
+           workstatus == "Unemployed" ~ "Unemployed", 
+           workstatus %in% c("Part time", "Full time") ~ "Working", 
+           workstatus %in% c("Retired Private Pension", "Retired State Pension") ~ "Retired", 
+           workstatus == "No Answer" ~ "No Answer"
+         ),
+         work_small = factor(work_small, levels=c("Not Working", "Unemployed", "Working", "Retired", "No Answer")), 
+         finances = factor(finances, 
+                           levels=c("I cannot afford my costs and often have to go without essentials like food and heating",
+                                    "I can only just afford my costs and often struggle to make ends meet",
+                                    "I do not have money for luxuries but can normally comfortably cover the essentials",
+                                    "I am relatively comfortable financially",
+                                    "I am very comfortable financially"), 
+                           labels=c("Struggling", "Barely Managing", "Managing", "Comfortable", "Very Comfortable")), 
+         ownrent = factor(ownrent, 
+                          levels = c("Rent free", 
+                                     "Rented from the council",
+                                     "Rented from the housing association", 
+                                     "Privately rented",
+                                     "Owned with a mortgage or loan",
+                                     "Owned outright",                                         
+                                     "Prefer not to say"), 
+                          labels = c("Rent Free", "Council Rent", "Housing Association Rent",
+                                     "Private Rent", "Owned Mortgage", "Owned Outright", "No Answer")),
+         ownrent_small = case_when(
+           ownrent == "Rent Free" ~ "Rent Free", 
+           ownrent %in% c("Council Rent", "Housing Association Rent", "Private Rent") ~ "Rent",
+           ownrent %in% c("Owned Mortgage", "Owned Outright") ~ "Own",
+           ownrent == "No Answer" ~ "No Answer"),
+         ownrent_small = factor(ownrent_small, levels=c("Rent", "Rent Free", "Own", "No Answer")), 
+         leaveremain = factor(leaveremain, 
+                              levels=c("Remain", "Leave", "I did not vote", "I was too young to vote", "Don't know"), 
+                              labels=c("Remain", "Leave", "No vote", "Too young", "DK")),
+         leaveremain_small = case_when(
+           leaveremain == "Remain" ~ "Remain", 
+           leaveremain == "Leave" ~ "Leave", 
+           leaveremain %in% c("No vote", "Too young", "DK") ~ "No Vote/DK"),
+         leaveremain_small = factor(leaveremain_small, levels=c("Remain", "Leave", "No Vote/DK")), 
+         scot_ref = factor(indyref, 
+                           levels=c("AGAINST Scottish Independence", "FOR Scottish independence", 
+                                    "I did not vote", "", "Don't Know"), 
+                           labels = c("Against", "For", "Abstain", "Ineligible", "DK")), 
+         vote2019 = case_when(
+           grepl("Conserv", ge2019) ~ "Con", 
+           grepl("Labour", ge2019) ~ "Lab",
+           grepl("Liberal", ge2019) ~ "Lib Dem",
+           grepl("SNP", ge2019) ~ "SNP",
+           grepl("Green", ge2019) ~ "Green", 
+           grepl("Brexit", ge2019) ~ "Brexit",
+           grepl("Plaid Cymru", ge2019) ~ "Plaid Cymru",
+           ge2019 == "Another party" ~ "Other", 
+           ge2019 %in% "I did not/could not vote" ~ "Abstain", 
+           ge2019 %in% c("Can't remember", "Don't know") ~ "DK"), 
+         vote2019 = factor(vote2019, levels=c("Lab", "SNP", "Green", "Lib Dem", "Plaid Cymru", "Con", "Brexit")), 
+         vote2024 = case_when(
+           grepl("Conserv", ge2024) ~ "Con", 
+           grepl("Labour", ge2024) ~ "Lab",
+           grepl("Liberal", ge2024) ~ "Lib Dem",
+           grepl("SNP", ge2024) ~ "SNP",
+           grepl("Green", ge2024) ~ "Green", 
+           grepl("Reform", ge2024) ~ "Reform",
+           grepl("Plaid Cymru", ge2024) ~ "Plaid Cymru",
+           grepl("Another", ge2024) ~ "Other", 
+           ge2024 %in% "I did not/could not vote" ~ "Abstain", 
+           ge2024 %in% c("Can't remember", "Don't know") ~ "DK"), 
+         vote2024 = factor(vote2024, levels=c("Lab", "SNP", "Green", "Lib Dem", "Plaid Cymru", "Con", "Reform")), 
+         likevote = as.numeric(likelihoodtovote), 
+         likevote = case_when(
+           likelihoodtovote == "0 - Certain not to vote" ~ 0, 
+           likelihoodtovote == "10 - Certain to vote" ~ 10,
+           likelihoodtovote == "Don't know" ~ NA_integer_,
+           TRUE ~ likevote), 
+         votingintention_headline = factor(votingintention_headline, 
+                                           levels=c("Labour", "Scottish National Party (SNP)", "The Green Party", "Liberal Democrat", "Plaid Cymru", 
+                                                    "Conservative", "Reform UK", "Another party/Independent Candidate", ""), 
+                                           labels = c("Lab", "SNP", "Green", "Lib Dem", "Plaid Cymru", "Con", "Reform", "Other", "None")), 
+         across(starts_with("biggest"), ~case_when(.x == "Not Selected" ~ 0, .x == "Selected" ~ 1, TRUE ~ NA_integer_)),
+         political_attention = factor(political_attention, 
+                                      levels=c("None at all", "A little", "A moderate amount", "A lot", "A great deal")), 
+         political_interest = factor(political_interest, 
+                                     levels=c("Not interested at all", "Hardly interested", "Quite interested", "Very interested"), 
+                                     labels=c("None", "Little", "Quite", "Very")), 
+         across(c(immigrant_numbers, refugees_numbers), 
+                ~factor(.x, 
+                        levels=c("Government should significantly reduce the numbers", 
+                                 "Government should slightly reduce the numbers", 
+                                 "Government should keep the number the same", 
+                                 "Government should slightly increase the numbers", 
+                                 "Government should significantly increase the numbers", 
+                                 "Don’t know"), 
+                        labels=c("Significantly Reduce", "Slightly Reduce", "Keep Same", "Slightly Increase", "Significantly Increase", "DK"))), 
+         crossingsconcern = factor(crossingsconcern, 
+                                   levels=c("Not at all concerned", "Not very concerned", "Somewhat concerned", "Very concerned"), 
+                                   labels=c("None", "Not very", "Somewhat", "Very")), 
+         labour_policy = factor(labour_policy, 
+                                levels = c("The Labour Government wants to reduce the overall numbers coming to the UK", 
+                                           "The Labour Government wants to keep the overall numbers the same", 
+                                           "The Labour Government wants to increase the overall numbers coming to the UK", 
+                                           "Don't know"), 
+                                labels = c("Reduce", "Keep Same", "Increase", "DK")), 
+         segment = factor(segment, 
+                          levels=c("Progressive Activists", "Civic Pragmatists", "Disengaged Battlers",
+                                   "Established Liberals",  "Loyal Nationals", "Disengaged Traditionalists",  "Backbone Conservatives"))
+  ) %>% 
+  rename("issue_afford_housing" = "biggestissue:Affordable housing",                 
+         "issue_asylum_seeker" = "biggestissue:Asylum seekers crossing the channel",
+         "issue_brexit" = "biggestissue:Brexit",                             
+         "issue_climate" = "biggestissue:Climate change and the environment", 
+         "issue_immigration" = "biggestissue:Levels of immigration",              
+         "issue_costs" = "biggestissue:Cost of living",                     
+         "issue_education" = "biggestissue:Education and childcare",            
+         "issue_crime" = "biggestissue:Crime",                              
+         "issue_care_elderly" = "biggestissue:Social care for the elderly",        
+         "issue_jobs" = "biggestissue:Jobs and unemployment",              
+         "issue_mental_health" = "biggestissue:Mental health",                      
+         "issue_middle_east" = "biggestissue:Conflict in the Middle East",        
+         "issue_trans" = "biggestissue:The debate about transgender people",
+         "issue_nhs" = "biggestissue:Supporting the NHS",                 
+         "issue_ukraine" = "biggestissue:The war in Ukraine",                 
+         "issue_welfare" = "biggestissue:Welfare and benefits",               
+         "issue_other" = "biggestissue:Other (please specify)",
+         "issue_none" = "biggestissue:None of the above")                        
+
+
+dat <- dat %>% 
+  mutate(immig_num2 = case_when(
+    grepl("Reduce", immigrant_numbers) ~ "Reduce",
+    grepl("Increase", immigrant_numbers) ~ "Increase", 
+    TRUE ~ "Keep Same/DK"), 
+    immig_num2 = factor(immig_num2, 
+                        levels = c("Reduce", "Keep Same/DK", "Increase")), 
+    refugee_num2 = case_when(
+      grepl("Reduce", refugees_numbers) ~ "Reduce",
+      grepl("Increase", refugees_numbers) ~ "Increase", 
+      TRUE ~ "Keep Same/DK"), 
+    refugee_num2 = factor(refugee_num2, 
+                          levels = c("Reduce", "Keep Same/DK", "Increase")))
+
+dat2 <- dat %>% 
+  mutate(
+    education = case_when(education == "No Answer" ~ NA_character_, TRUE ~ education), 
+    education = factor(education, levels = levels(dat$education[1:8])), 
+    educ3 = case_when(
+      grepl("Secondary", education) ~ "Secondary or Less", 
+      grepl("Tech", education) ~ "Tech Training", 
+      education %in% c("BA/Sc", "MA/Sc", "PhD") ~ "Degree",
+      TRUE ~ NA_character_), 
+    educ3 = factor(educ3, 
+                   levels = c("Secondary or Less", "Tech Training", "Degree"), 
+                   labels = c("Secondary or Less", "Tech Training", "Degree")), 
+    urbrur3 = case_when(
+      urbanrural %in% c("Rural", "Village") ~ "Rural", 
+      urbanrural %in% c("Small Town", "Large Town", "Suburbs") ~ "Town/Suburb", 
+      urbanrural == "City" ~ "City"), 
+    finances3 = case_when(
+      finances %in% c("Barely Managing", "Struggling") ~ "Struggling",
+      finances == "Managing" ~ "Managing",
+      finances %in% c("Comfortable", "Very Comfortable") ~ "Comfortable",
+    ), 
+    ownrent2 = case_when(
+      grepl("Rent", ownrent) ~ "Rent",
+      grepl("Own", ownrent) ~ "Own",
+      TRUE ~ "No Answer"
+    ), 
+    youngold = case_when(
+      age_grouped %in% c("18-24", "25-34", "35-44") ~ "Young",
+      age_grouped %in% c("45-54", "55-64", "65+") ~ "Older"
+    ), 
+    vote_right = case_when(
+      votingintention_headline %in% c("Con", "Reform") ~ "Right",
+      votingintention_headline %in% c("Lab", "SNP", "Green", "Lib Dem", "Plaid Cymru", "Ohter") ~ "Left", 
+      votingintention_headline == "None" ~ "No Vote"
+    ), 
+    degree = case_when(
+      degree == "No Answer" ~ NA_character_,
+      TRUE ~ degree
+    ), 
+    degree = factor(degree, levels=c("No Degree", "Degree"))
+  )
+```
+
+
+## Model 1
+
+```{r fig.height=10, fig.width=6, out.width="100%"}
+m0 <- nnet::multinom(segment ~ immig_num2 + youngold + gender + degree + urbrur3 + finances3 + ethnicity + ownrent2 +  vote_right + 
+                       region + work_small + political_interest + crossingsconcern + 
+                       leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate +  
+                       issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                     data=subset(dat2, issue_immigration == 0), maxit=1000, trace=FALSE)
+
+m1 <- nnet::multinom(segment ~ immig_num2 + youngold + gender + degree + urbrur3 + finances3 + ethnicity + ownrent2 +   vote_right + 
+                       region + work_small + political_interest + crossingsconcern + 
+                       leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                       issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                     data=subset(dat2, issue_immigration == 1), maxit=1000, trace=FALSE)
+
+
+library(marginaleffects)
+
+p1 <- avg_predictions(m1, variables = "immig_num2")
+p0 <- avg_predictions(m0, variables = "immig_num2")
+
+plot_dat <- bind_rows(p0 %>% as.data.frame() %>% mutate(iss = "Immigration Not Important"),
+                      p1 %>% as.data.frame() %>% mutate(iss = "Immigration Important"))
+
+ggplot(plot_dat, aes(x=group, y=estimate, ymin=conf.low, ymax=conf.high, colour=iss)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(immig_num2), ncol=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Segment Membership", colour="") + 
+  scale_color_brewer(palette = "Set1")
+```
+
+```{r}
+ggplot(plot_dat, aes(x=immig_num2, y=estimate, ymin=conf.low, ymax=conf.high, colour=iss)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~group) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Segment Membership", colour="") + 
+  scale_color_brewer(palette = "Set1")
+
+
+```
+
+
+```{r}
+ggplot(plot_dat, aes(x=as.numeric(immig_num2), y=estimate, ymin=conf.low, ymax=conf.high, colour=iss)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  geom_line() + 
+  facet_grid(group~iss) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Segment Membership", colour="") + 
+  scale_color_brewer(palette = "Set1") + 
+  scale_x_continuous(breaks=1:3, labels=c("Reduce", "Keep Same", "Increase")) 
+
+```
+
+```{r}
+ggplot(plot_dat, aes(x=as.numeric(immig_num2), y=estimate, ymin=conf.low, ymax=conf.high, colour=iss)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  geom_line() + 
+  facet_grid(group~iss) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Segment Membership", colour="") + 
+  scale_color_brewer(palette = "Set1") + 
+  scale_x_continuous(breaks=1:3, labels=c("Reduce", "Keep Same", "Increase")) 
+
+```
+
+
+
+If you want to know which comparisons are significant, you can look here: 
+
+```{r}
+c1a <- avg_comparisons(m0, variables=list("immig_num2" = "pairwise"))
+c1b <- avg_comparisons(m1, variables=list("immig_num2" = "pairwise"))
+comp_dat1 <- bind_rows(c1a %>% as.data.frame() %>% mutate(immig_imp = "Immigration Not Important"),
+                       c1b %>% as.data.frame() %>% mutate(immig_imp = "Immigration Important")) %>% 
+  mutate(immig_imp = factor(immig_imp, levels=c("Immigration Not Important", "Immigration Important"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat1 %>% select(group, contrast, estimate, sig)
+```
+
+## Model 2
+
+```{r fig.height=4, fig.width=10, out.width="100%"}
+m2a <- MASS::polr(immig_num2 ~ youngold + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + 
+                       region + work_small + political_interest + crossingsconcern + 
+                       leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                       issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                     data=subset(dat2, urbrur3 == "Rural"))
+
+m2b <- MASS::polr(immig_num2 ~ youngold + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, urbrur3 == "Town/Suburb"))
+
+m2c <- MASS::polr(immig_num2 ~ youngold + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, urbrur3 == "City"))
+
+p2a <- avg_predictions(m2a, variables = "degree")
+p2b <- avg_predictions(m2b, variables = "degree")
+p2c <- avg_predictions(m2c, variables = "degree")
+plot_dat2 <- bind_rows(p2a %>% as.data.frame() %>% mutate(urbrur = "Rural"),
+                       p2b %>% as.data.frame() %>% mutate(urbrur = "Town/Suburb"),
+                       p2c %>% as.data.frame() %>% mutate(urbrur = "City")) %>% 
+  mutate(urbrur = factor(urbrur, levels=c("Rural", "Town/Suburb", "City")))
+
+ggplot(plot_dat2, aes(x=urbrur, y=estimate, ymin=conf.low, ymax=conf.high, colour=degree)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(group), nrow=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+```
+
+To see whcih comparisons are significant, look here:
+
+```{r}
+c2a <- avg_comparisons(m2a, variables="degree")
+c2b <- avg_comparisons(m2b, variables="degree")
+c2c <- avg_comparisons(m2c, variables="degree")
+comp_dat2 <- bind_rows(c2a %>% as.data.frame() %>% mutate(urbrur = "Rural"),
+                       c2b %>% as.data.frame() %>% mutate(urbrur = "Town/Suburb"),
+                       c2c %>% as.data.frame() %>% mutate(urbrur = "City")) %>% 
+  mutate(urbrur = factor(urbrur, levels=c("Rural", "Town/Suburb", "City"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat2 %>% select(group, urbrur, contrast, estimate, sig)
+```
+## Model 3
+
+```{r fig.height=4, fig.width=10, out.width="100%"}
+m3a <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, youngold == "Young"))
+
+m3b <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, youngold == "Older"))
+
+
+p3a <- avg_predictions(m3a, variables = "gender")
+p3b <- avg_predictions(m3b, variables = "gender")
+plot_dat3 <- bind_rows(p3a %>% as.data.frame() %>% mutate(age = "Young"),
+                       p3b %>% as.data.frame() %>% mutate(age = "Older")) %>% 
+  mutate(age = factor(age, levels=c("Young", "Older")))
+
+ggplot(plot_dat3, aes(x=age, y=estimate, ymin=conf.low, ymax=conf.high, colour=gender)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(group), nrow=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+
+```
+
+To see which comparisons are significant, look here: 
+
+```{r}
+c3a <- avg_comparisons(m3a, variables="gender")
+c3b <- avg_comparisons(m3b, variables="gender")
+comp_dat3 <- bind_rows(c3a %>% as.data.frame() %>% mutate(age = "Young"),
+                       c3b %>% as.data.frame() %>% mutate(age = "Older")) %>% 
+  mutate(age = factor(age, levels=c("Young", "Older"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat3 %>% select(group, age, contrast, estimate, sig)
+```
+
+## Model 4
+
+```{r fig.height=4, fig.width=10, out.width="100%"}
+m4a <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, vote_right == "Right"))
+
+m4b <- MASS::polr(immig_num2 ~ youngold + urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_afford_housing + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, vote_right == "Left"))
+
+
+p4a <- avg_predictions(m4a, variables = "finances3")
+p4b <- avg_predictions(m4b, variables = "finances3")
+plot_dat4 <- bind_rows(p4a %>% as.data.frame() %>% mutate(vote = "Right"),
+                       p4b %>% as.data.frame() %>% mutate(vote = "Left")) %>% 
+  mutate(vote = factor(vote, levels=c("Left", "Right")), 
+         finances3 = factor(finances3, 
+                            levels=c("Struggling", "Managing", "Comfortable")))
+
+ggplot(plot_dat4, aes(x=finances3, y=estimate, ymin=conf.low, ymax=conf.high, colour=vote)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(group), nrow=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+
+```
+
+To see which comparisons are significant, look here: 
+
+```{r}
+c4a <- avg_comparisons(m4a, variables=list("finances3" = "pairwise"))
+c4b <- avg_comparisons(m4b, variables=list("finances3" = "pairwise"))
+comp_dat4 <- bind_rows(c4a %>% as.data.frame() %>% mutate(vote = "Right"),
+                       c4b %>% as.data.frame() %>% mutate(vote = "Left")) %>% 
+  mutate(age = factor(vote, levels=c("Left", "Right"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat4 %>% select(group, vote, contrast, estimate, sig)
+```
+
+## Model 5
+
+```{r fig.height=4, fig.width=10, out.width="100%"}
+p5a <- avg_predictions(m3a, variables = "ownrent2")
+p5b <- avg_predictions(m3b, variables = "ownrent2")
+plot_dat5 <- bind_rows(p5a %>% as.data.frame() %>% mutate(age = "Young"),
+                       p5b %>% as.data.frame() %>% mutate(age = "Older")) %>% 
+  mutate(age = factor(age, levels=c("Young", "Older")))
+
+ggplot(plot_dat5 %>% filter(ownrent2 != "No Answer"), aes(x=age, y=estimate, ymin=conf.low, ymax=conf.high, colour=ownrent2)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(group), nrow=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+```
+
+To see which comparisons are significant, look here: 
+
+```{r}
+c5a <- avg_comparisons(m3a, variables="ownrent2")
+c5b <- avg_comparisons(m3b, variables="ownrent2")
+comp_dat5 <- bind_rows(c5a %>% as.data.frame() %>% mutate(age = "Young"),
+                       c5b %>% as.data.frame() %>% mutate(age = "Older")) %>% 
+  mutate(age = factor(age, levels=c("Young", "Older"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat5 %>% select(group, contrast, estimate, sig)
+```
+
+
+## Model 6
+
+```{r fig.height=4, fig.width=10, out.width="100%"}
+m6a <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + youngold + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small+ issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, issue_afford_housing == 0))
+
+m6b <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + youngold + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, issue_afford_housing == 1))
+
+
+p6a <- avg_predictions(m6a, variables = "youngold")
+p6b <- avg_predictions(m6b, variables = "youngold")
+plot_dat6 <- bind_rows(p6a %>% as.data.frame() %>% mutate(afford_house = "Not Selected"),
+                       p6b %>% as.data.frame() %>% mutate(afford_house = "Selected")) %>% 
+  mutate(afford_house = factor(afford_house, levels=c("Not Selected", "Selected")))
+
+ggplot(plot_dat6, aes(x=afford_house, y=estimate, ymin=conf.low, ymax=conf.high, colour=youngold)) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(group), nrow=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+```
+
+To see which comparisons are significant, look here: 
+
+```{r}
+c6a <- avg_comparisons(m6a, variables="youngold")
+c6b <- avg_comparisons(m6b, variables="youngold")
+comp_dat6 <- bind_rows(c6a %>% as.data.frame() %>% mutate(afford_house = "Not Selected"),
+                       c6b %>% as.data.frame() %>% mutate(afford_house = "Selected")) %>% 
+  mutate(afford_house = factor(afford_house, levels=c("Not Selected", "Selected"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat6 %>% select(afford_house, group, contrast, estimate, sig)
+
+c6a <- avg_comparisons(m6a, variables="youngold") %>% inferences(method="simulation")
+c6b <- avg_comparisons(m6b, variables="youngold") %>% inferences(method="simulation")
+
+post6a <- t(attr(c6a, "posterior_draws"))
+post6b <- t(attr(c6b, "posterior_draws"))
+
+post6 <- cbind(post6a, post6b)
+colnames(post6) <- c("R_NS", "K_NS", "I_NS", "R_S", "K_S", "I_S")
+make_diff <- function(X, calc_secdiff = FALSE, ...){
+  combs <- combn(ncol(X), 2)
+  D <- matrix(0, nrow=ncol(X), ncol=ncol(combs))
+  D[cbind(combs[1,], 1:ncol(combs))] <- -1
+  D[cbind(combs[2,], 1:ncol(combs))] <- 1
+  diffs <- X %*% D
+  p_less <- apply(diffs, 2, \(x)mean(x < 0))
+  p_eq <- apply(diffs, 2, \(x) mean(x == 0))
+  p_more <- apply(diffs, 2, \(x)mean(x > 0))
+  p_neq <- p_less + p_more  
+  p <- dplyr::case_when(
+    p_neq <= .9 ~ .5, 
+    p_neq > .9 & p_more > p_less ~ p_more, 
+    p_neq > .9 & p_less > p_more ~ p_less
+  )
+  out_fd <- tibble(
+    col1 = colnames(X)[combs[1,]], 
+    col2 = colnames(X)[combs[2,]], 
+    diff = colMeans(diffs), 
+    p = p)
+  res <- list(fd = out_fd)
+  if(calc_secdiff){
+  cn <- paste(colnames(X)[combs[2,]], 
+              colnames(X)[combs[1,]], 
+              sep=" - ")
+  X <- diffs
+  colnames(X) <- cn
+  combs <- combn(ncol(X), 2)
+  D <- matrix(0, nrow=ncol(X), ncol=ncol(combs))
+  D[cbind(combs[1,], 1:ncol(combs))] <- -1
+  D[cbind(combs[2,], 1:ncol(combs))] <- 1
+  diffs <- X %*% D
+  p_less <- apply(diffs, 2, \(x)mean(x < 0))
+  p_eq <- apply(diffs, 2, \(x) mean(x == 0))
+  p_more <- apply(diffs, 2, \(x)mean(x > 0))
+  p_neq <- p_less + p_more  
+  p <- dplyr::case_when(
+    p_neq <= .9 ~ .5, 
+    p_neq > .9 & p_more > p_less ~ p_more, 
+    p_neq > .9 & p_less > p_more ~ p_less
+  )
+  out_sd <- tibble(
+    col1 = colnames(X)[combs[1,]], 
+    col2 = colnames(X)[combs[2,]], 
+    diff = colMeans(diffs),
+    p = p)
+    res$sd <- out_sd
+  }
+  return(res)
+}
+
+m6 <- make_diff(post6, calc_secdiff = TRUE)
+```
+
+```{r}
+m7 <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + youngold + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small+ issue_brexit + issue_care_elderly + issue_climate + issue_afford_housing, 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=dat2)
+
+mf <- model.frame(m7)[,1:14]
+l <- lapply(names(mf), \(x)"pairwise")
+names(l) <- colnames(mf)
+
+pred7 <- avg_predictions(m7, variables = "crossingsconcern")
+
+comp7 <- avg_comparisons(m7, variables = l)
+comp7_best <- comp7 %>% 
+  as.data.frame() %>% 
+  group_by(term, group) %>% 
+  slice_max(abs(estimate), n=1)
+
+comp7_best %>% filter(group == "Reduce") %>% arrange(desc(abs(estimate)))
+
+```
+
+
+
+
+## Model 6
+
+```{r fig.height=4, fig.width=10, out.width="100%"}
+m8a <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + issue_afford_housing + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small+ issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, youngold == "Young"))
+
+m8b <- MASS::polr(immig_num2 ~ urbrur3 + gender + degree + finances3 + ethnicity + ownrent2 +  vote_right + issue_afford_housing + 
+                    region + work_small + political_interest + crossingsconcern + 
+                    leaveremain_small + issue_brexit + issue_care_elderly + issue_climate + 
+                    issue_costs + issue_crime + issue_jobs + issue_mental_health + issue_nhs + issue_ukraine + issue_welfare, 
+                  data=subset(dat2, youngold == "Older"))
+
+
+p8a <- avg_predictions(m8a, variables = "issue_afford_housing")
+p8b <- avg_predictions(m8b, variables = "issue_afford_housing")
+plot_dat8 <- bind_rows(p8a %>% as.data.frame() %>% mutate(youngold = "Young"),
+                       p8b %>% as.data.frame() %>% mutate(youngold = "Older")) %>% 
+  mutate(youngold = factor(youngold, levels=c("Young", "Older")))
+
+ggplot(plot_dat8, aes(x=youngold, y=estimate, ymin=conf.low, ymax=conf.high, colour= as.factor(issue_afford_housing))) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  facet_wrap(~forcats::fct_rev(group), nrow=1) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+
+ggplot(p8a, aes(x=group, y=estimate, ymin = conf.low, ymax=conf.high, 
+                colour=factor(issue_afford_housing, levels=c(0,1), labels=c("Not Seleted", "Selected")))) + 
+  geom_pointrange(position = position_dodge(width=.5)) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, hjust=1), 
+        legend.position="top") +
+  labs(x="", y="Probability of Holding Immigration Preference", colour="") + 
+  scale_color_brewer(palette = "Set1") 
+  
+
+```
+
+To see which comparisons are significant, look here: 
+
+```{r}
+c8a <- avg_comparisons(m8a, variables="issue_afford_housing")
+c8b <- avg_comparisons(m8b, variables="issue_afford_housing")
+comp_dat8 <- bind_rows(c8a %>% as.data.frame() %>% mutate(afford_house = "Not Selected"),
+                       c8b %>% as.data.frame() %>% mutate(afford_house = "Selected")) %>% 
+  mutate(afford_house = factor(afford_house, levels=c("Not Selected", "Selected"))) %>% 
+  mutate(sig = ifelse(p.value < .05, "Significant", "Not Significant")) 
+comp_dat8 %>% select(afford_house, group, contrast, estimate, sig)
+```
