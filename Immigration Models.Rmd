@@ -341,7 +341,7 @@ ggplot(plot_dat, aes(x=as.numeric(immig_num2), y=estimate, ymin=conf.low, ymax=c
 
 
 
-If you want to know which comparisons are significant, you can look here: 
+If want to know which comparisons are significant, look here: 
 
 ```{r}
 c1a <- avg_comparisons(m0, variables=list("immig_num2" = "pairwise"))
